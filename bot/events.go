@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+	_ "unsafe"
+
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	_ "github.com/df-mc/dragonfly/server/world"
@@ -15,8 +18,6 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"github.com/sandertv/gophertunnel/minecraft/text"
 	log "github.com/sirupsen/logrus"
-	"time"
-	_ "unsafe"
 )
 
 type EventsListener struct {
@@ -58,6 +59,7 @@ func (e *EventsListener) Attach(c *Client) {
 		F: func(client *Client, p *packet.Text) error {
 
 			//c.Logger.Info(text.ANSI(p.Message))
+			fmt.Printf("%s\n", text.ANSI(p.Message))
 			go func() {
 				err := eventbus.Publish[*ChatEvent](c.EventBus)(context.Background(), &ChatEvent{Message: text.Clean(p.Message), FormattedMessage: p.Message})
 				if err != nil {

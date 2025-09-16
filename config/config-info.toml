@@ -1,0 +1,26 @@
+# Bot Configuration File - Info Mode
+
+[logging]
+# Log level: "info" mode - only important information
+level = "info"
+
+# Disable file logging for info mode
+enable_file_logging = false
+
+# Log file path (not used in info mode)
+log_file = "logs/bot.log"
+
+# Log format
+format = "text"
+
+# Include timestamp in logs
+include_timestamp = true
+
+# Disable packet details for info mode
+include_packet_details = false
+
+[bot]
+# Bot reconnection settings
+auto_reconnect = true
+max_reconnect_attempts = 5
+reconnect_delay_seconds = 30

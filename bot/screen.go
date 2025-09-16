@@ -9,7 +9,7 @@ import (
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/item/inventory"
 	"github.com/df-mc/dragonfly/server/world"
-	"github.com/patyhank/bedrock-library/internal/nbtconv"
+	"patyhank_gomc/internal/nbtconv"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"gopkg.in/square/go-jose.v2/json"

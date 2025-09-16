@@ -1,0 +1,43 @@
+# Bot Configuration File
+
+[logging]
+# Log level: "debug" or "info"
+# debug: Outputs detailed debugging .log files with all information
+# info: Only outputs text packet content and important bot system information (disconnections, etc.)
+level = "info"
+
+# Enable file logging
+enable_file_logging = true
+
+# Log file path (relative to project root)
+log_file = "logs/bot.log"
+
+# Log format: "text" or "json"
+format = "text"
+
+# Include timestamp in logs
+include_timestamp = true
+
+# Include packet details in logs (only for debug level)
+include_packet_details = true
+
+[bot]
+# Bot reconnection settings
+auto_reconnect = true
+max_reconnect_attempts = 5
+reconnect_delay_seconds = 30
+
+# Bot owners (can use admin commands)
+owners = ["example_owner"]
+
+# Advertisement messages
+ads = ["Example advertisement message"]
+
+[auth]
+# Token cache file for storing authentication tokens
+token_cache_file = "profile/cache.json"
+
+[server]
+# Minecraft server connection details
+address = "bedrock.mcfallout.net"
+port = 19132

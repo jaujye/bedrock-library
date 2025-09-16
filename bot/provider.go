@@ -12,13 +12,14 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/google/uuid"
 	"github.com/goxiaoy/go-eventbus"
-	"github.com/patyhank/bedrock-library/extra"
+	"patyhank_gomc/config"
+	"patyhank_gomc/extra"
+	"patyhank_gomc/internal/logger"
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/auth"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 	"reflect"
 	"sync"
@@ -43,10 +44,11 @@ type PlayerStatus struct {
 
 type Client struct {
 	config   ClientConfig
+	Config   *config.Config
 	Conn     *minecraft.Conn
 	Events   *Events
 	world    *World
-	Logger   *log.Logger
+	Logger   *logger.Logger
 	Screen   *ScreenManager
 	Entity   *EntityManager
 	Self     *Player
@@ -65,29 +67,32 @@ func init() {
 //go:linkname world_finaliseBlockRegistry github.com/df-mc/dragonfly/server/world.finaliseBlockRegistry
 func world_finaliseBlockRegistry()
 
-func NewClient() *Client {
-	logger := log.New()
-	customFormatter := new(log.TextFormatter)
+func NewClient(cfg *config.Config) *Client {
+	if cfg == nil {
+		cfg = config.LoadDefault()
+	}
 
-	customFormatter.TimestampFormat = "15:04:05"
-	customFormatter.FullTimestamp = true
-	customFormatter.ForceColors = true
-	customFormatter.ForceColors = true
-	log.SetFormatter(customFormatter)
-	logger.SetFormatter(customFormatter)
+	clientLogger := logger.NewLogger(cfg)
+
 	client := &Client{
+		Config: cfg,
 		Events: &Events{
 			hLock:    sync.Mutex{},
 			generic:  []GenericHandler{},
 			handlers: map[uint32][]any{},
 			tickers:  []TickHandler{},
 		},
-		Logger: logger,
+		Logger: clientLogger,
 		PlayerStatus: &PlayerStatus{
 			flyLock:      sync.Mutex{},
 			breakLock:    sync.Mutex{},
 			teleportChan: make(chan any, 255),
 		},
+	}
+
+	clientLogger.LogSystemEvent("CLIENT_INIT", fmt.Sprintf("Bot client initialized with logging level: %s", cfg.Logging.Level))
+	if cfg.ShouldLogToFile() {
+		clientLogger.LogSystemEvent("LOGGING", fmt.Sprintf("File logging enabled: %s", cfg.Logging.LogFile))
 	}
 
 	return client
@@ -118,8 +123,10 @@ func (c *Client) ConnectTo(config ClientConfig) error {
 }
 
 func (c *Client) HandleGame() error {
+	c.Logger.LogConnection("GAME_START", "Starting game packet handling")
 	lastTime := time.Now()
 	exited := atomic.NewBool(false)
+
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		for {
@@ -127,11 +134,12 @@ func (c *Client) HandleGame() error {
 			if time.Now().After(lastTime.Add(time.Second * 15)) {
 				err := c.Conn.Close()
 				c.Conn.Flush()
-				log.Warn("read ", context.DeadlineExceeded, err)
+				c.Logger.LogConnection("TIMEOUT", fmt.Sprintf("Connection timeout detected: %v", err))
 				exited.Store(true)
 			}
 		}
 	}()
+
 	for {
 		if exited.Load() {
 			return context.DeadlineExceeded
@@ -139,10 +147,19 @@ func (c *Client) HandleGame() error {
 		pk, err := c.Conn.ReadPacket()
 		if err != nil {
 			c.connected = false
+			c.Logger.LogConnection("DISCONNECT", fmt.Sprintf("Connection lost: %v", err))
 			return err
 		}
 		lastTime = time.Now()
 		id := pk.ID()
+
+		// Log packet information based on configuration
+		packetName := fmt.Sprintf("%T", pk)
+		if len(packetName) > 0 && packetName[0] == '*' {
+			packetName = packetName[1:] // Remove * prefix
+		}
+		c.Logger.LogPacket(packetName, id, pk)
+
 		c.Events.hLock.Lock()
 		handlers := c.Events.handlers[id]
 		c.Events.hLock.Unlock()
@@ -151,6 +168,7 @@ func (c *Client) HandleGame() error {
 				res := reflect.ValueOf(handler).FieldByName("F").Call([]reflect.Value{reflect.ValueOf(c), reflect.ValueOf(pk)})
 				err := res[0].Interface()
 				if err != nil {
+					c.Logger.LogError("PACKET_HANDLER", fmt.Sprintf("Handler error for packet %s", packetName), err.(error))
 					break
 				}
 			}
@@ -158,18 +176,21 @@ func (c *Client) HandleGame() error {
 		for _, handler := range c.Events.generic {
 			err := handler.F(c, pk)
 			if err != nil {
+				c.Logger.LogError("GENERIC_HANDLER", fmt.Sprintf("Generic handler error for packet %s", packetName), err)
 				break
 			}
 		}
 	}
 }
 func (c *Client) Reconnect() error {
+	c.Logger.LogConnection("RECONNECT_ATTEMPT", "Attempting to reconnect to server")
 	err := c.ConnectTo(c.config)
 	if err != nil {
-		panic(err)
+		c.Logger.LogError("RECONNECT", "Failed to reconnect", err)
+		return err
 	}
 
-	c.Logger.Infof("Connected as %s\n", c.Conn.IdentityData().Identity)
+	c.Logger.LogConnection("RECONNECT_SUCCESS", fmt.Sprintf("Connected as %s", c.Conn.IdentityData().Identity))
 	return c.HandleGame()
 }
 
@@ -309,7 +330,7 @@ func (c *Client) BreakBlock(pos cube.Pos) {
 	disposable, _ := eventbus.Subscribe[*BrokeBlockEvent](c.EventBus)(func(ctx context.Context, event *BrokeBlockEvent) error {
 		if event.Position == bPos {
 			if c.World().Block(pos) != airB {
-				log.Info(c.World().Block(pos))
+				c.Logger.LogDebug("BREAK_BLOCK", fmt.Sprintf("Block not broken yet: %v", c.World().Block(pos)))
 				return nil
 			}
 			go func() {

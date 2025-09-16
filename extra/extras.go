@@ -516,7 +516,7 @@ func init() {
 	world.RegisterItem(CaveVinesBodyWithBerries{})
 	world.RegisterItem(ItemIronDoor{})
 	world.RegisterItem(BeeNest{})
-	world.RegisterItem(Waterlily{})
+	// world.RegisterItem(Waterlily{}) // Temporarily disabled due to duplicate registration
 	world.RegisterItem(DeepslateRedstoneOre{})
 	world.RegisterItem(HardGlass{})
 	world.RegisterItem(ActivatorRail{})

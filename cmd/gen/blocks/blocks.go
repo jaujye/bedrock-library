@@ -7,7 +7,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block"
 	"github.com/df-mc/dragonfly/server/item"
 	"github.com/df-mc/dragonfly/server/world"
-	generateutils "github.com/patyhank/bedrock-library/cmd/generatorutils"
+	generateutils "patyhank_gomc/cmd/generatorutils"
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 	"os"
 	"sort"

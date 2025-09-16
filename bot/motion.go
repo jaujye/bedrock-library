@@ -10,6 +10,7 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
+	"iter"
 	"math"
 	"slices"
 	"time"
@@ -55,15 +56,17 @@ func (f Finder[_]) AllowStanding(n cube.Pos) bool {
 	return false
 }
 
-func (f Finder[Node]) Neighbours(no Node) (nodes []Node) {
-	n := cube.Pos(no)
-
-	n.Neighbours(func(neighbour cube.Pos) {
-		if f.AllowStanding(neighbour) {
-			nodes = append(nodes, Node(neighbour))
-		}
-	}, f.w.Range())
-	return
+func (f Finder[Node]) Neighbours(no Node) iter.Seq[Node] {
+	return func(yield func(Node) bool) {
+		n := cube.Pos(no)
+		n.Neighbours(func(neighbour cube.Pos) {
+			if f.AllowStanding(neighbour) {
+				if !yield(Node(neighbour)) {
+					return
+				}
+			}
+		}, f.w.Range())
+	}
 }
 
 func BlockPosFromVec3(position mgl32.Vec3) cube.Pos {
