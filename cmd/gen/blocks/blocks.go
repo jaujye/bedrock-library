@@ -69,17 +69,35 @@ func genFile() {
 	}
 	for name, rid := range m {
 		_, b := world.ItemByName(name, int16(rid))
-		if !b {
-			ss = append(ss, State{
-				Name: name,
-			})
+		if b {
+			// Already registered by dragonfly (or a previous entry); no stub needed.
+			continue
 		}
+		if _, _, ok := world.ItemRuntimeID(stubItem{name: name}); !ok {
+			// The name no longer exists in dragonfly's vanilla item runtime ID table (renamed or
+			// removed upstream since item_runtime_ids.nbt was captured). Registering a stub for it
+			// would panic with "item name ... does not have a runtime ID", so skip it.
+			continue
+		}
+		ss = append(ss, State{
+			Name: name,
+		})
 	}
 
 	var source bytes.Buffer
 	temp.Execute(&source, ss)
 
 	os.WriteFile("../../../extra/extras.go", source.Bytes(), 0o666)
+}
+
+// stubItem is a throwaway world.Item used only to probe dragonfly's vanilla item runtime ID table
+// through world.ItemRuntimeID, without needing one of the generated types in extra/extras.go.
+type stubItem struct {
+	name string
+}
+
+func (s stubItem) EncodeItem() (name string, meta int16) {
+	return s.name, 0
 }
 
 // hashProperties produces a hash for the block properties held by the blockState.

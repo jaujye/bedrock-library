@@ -110,7 +110,7 @@ func (c *Client) ConnectTo(config ClientConfig) error {
 		ClientData: login.ClientData{
 			DeviceModel:   "WTF OS 1.0",
 			DeviceOS:      protocol.DeviceAndroid,
-			GameVersion:   "1.20.51",
+			GameVersion:   protocol.CurrentVersion,
 			LanguageCode:  "zh_TW",
 			ServerAddress: config.Address,
 		},
@@ -275,7 +275,7 @@ func (c *Client) OpenInventory() {
 	c.Conn.WritePacket(&packet.Interact{
 		ActionType:            packet.InteractActionOpenInventory,
 		TargetEntityRuntimeID: c.Conn.GameData().EntityRuntimeID,
-		Position:              mgl32.Vec3{0, 0, 0},
+		Position:              protocol.Option(mgl32.Vec3{0, 0, 0}),
 	})
 }
 

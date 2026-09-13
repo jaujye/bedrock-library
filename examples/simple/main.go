@@ -252,7 +252,7 @@ func (h *InventoryHelper) GetInventorySummary() map[string]int {
 	return summary
 }
 
-// PrintInventoryLayout 打印背包布局（用於調試）
+// PrintInventoryLayout 打印背包布局（CLI表格格式）
 func (h *InventoryHelper) PrintInventoryLayout() string {
 	screen := h.client.Screen
 	if screen == nil {
@@ -260,37 +260,86 @@ func (h *InventoryHelper) PrintInventoryLayout() string {
 	}
 
 	var layout strings.Builder
-	layout.WriteString("=== 背包布局 ===\n")
-	layout.WriteString("快捷欄 (0-8):\n")
 
-	// 快捷欄 (前9格)
+	// 表格標題
+	layout.WriteString("┌─────┬─────────────────────────────────┬─────┬──────────┬────────┐\n")
+	layout.WriteString("│格位 │             物品名稱            │數量 │   位置   │  狀態  │\n")
+	layout.WriteString("├─────┼─────────────────────────────────┼─────┼──────────┼────────┤\n")
+
+	heldSlot := int(screen.HeldSlot.Load())
+
+	// 快捷欄 (0-8)
 	for i := 0; i < 9; i++ {
 		item, _ := screen.Inv.Item(i)
+		var itemName string
+		var count string
+		var status string
+
 		if !item.Empty() {
 			name, _ := item.Item().EncodeItem()
-			layout.WriteString(fmt.Sprintf("  [%d] %s x%d", i, name, item.Count()))
-			if i == int(screen.HeldSlot.Load()) {
-				layout.WriteString(" ← 手持")
+			itemName = name
+			count = fmt.Sprintf("%d", item.Count())
+			if i == heldSlot {
+				status = "手持"
+			} else {
+				status = "-"
 			}
-			layout.WriteString("\n")
 		} else {
-			layout.WriteString(fmt.Sprintf("  [%d] 空\n", i))
+			itemName = "(空)"
+			count = "-"
+			if i == heldSlot {
+				status = "手持空"
+			} else {
+				status = "-"
+			}
+		}
+
+		// 限制物品名稱長度以保持表格對齊
+		if len(itemName) > 30 {
+			itemName = itemName[:27] + "..."
+		}
+
+		layout.WriteString(fmt.Sprintf("│%4d │ %-30s │%4s │  快捷欄  │%6s │\n",
+			i, itemName, count, status))
+	}
+
+	// 主背包 (9-35)
+	for i := 9; i < 36; i++ {
+		item, _ := screen.Inv.Item(i)
+		var itemName string
+		var count string
+
+		if !item.Empty() {
+			name, _ := item.Item().EncodeItem()
+			itemName = name
+			count = fmt.Sprintf("%d", item.Count())
+		} else {
+			itemName = "(空)"
+			count = "-"
+		}
+
+		// 限制物品名稱長度以保持表格對齊
+		if len(itemName) > 30 {
+			itemName = itemName[:27] + "..."
+		}
+
+		layout.WriteString(fmt.Sprintf("│%4d │ %-30s │%4s │  主背包  │   -   │\n",
+			i, itemName, count))
+	}
+
+	// 表格結束
+	layout.WriteString("└─────┴─────────────────────────────────┴─────┴──────────┴────────┘\n")
+
+	// 統計資訊
+	occupiedSlots := 0
+	for i := 0; i < 36; i++ {
+		item, _ := screen.Inv.Item(i)
+		if !item.Empty() {
+			occupiedSlots++
 		}
 	}
 
-	layout.WriteString("\n主背包 (9-35):\n")
-	// 主背包 (9-35)
-	emptyCount := 0
-	for i := 9; i < 36; i++ {
-		item, _ := screen.Inv.Item(i)
-		if !item.Empty() {
-			name, _ := item.Item().EncodeItem()
-			layout.WriteString(fmt.Sprintf("  [%d] %s x%d\n", i, name, item.Count()))
-		} else {
-			emptyCount++
-		}
-	}
-	layout.WriteString(fmt.Sprintf("  (還有 %d 個空格位)\n", emptyCount))
+	layout.WriteString(fmt.Sprintf("\n統計: %d/36 格位已使用 | 當前手持: 格位 %d", occupiedSlots, heldSlot))
 
 	return layout.String()
 }
@@ -510,9 +559,9 @@ func main() {
 								}
 
 							case "layout":
-								// 顯示背包布局
+								// 顯示背包布局（CLI表格格式）
 								layout := invHelper.PrintInventoryLayout()
-								client.SendText(layout)
+								fmt.Print(layout)
 
 							case "help":
 								helpMsg := "背包指令 (基於 ScreenManager):\n" +
@@ -583,7 +632,7 @@ func main() {
 		// Start readline input handling in a separate goroutine
 		go func() {
 			defer rl.Close()
-			client.Logger.LogSystemEvent("READLINE", "Console input enabled. Use '/' prefix for commands, anything else for chat.")
+			client.Logger.LogSystemEvent("READLINE", "Console input enabled. Use '/' prefix for commands, '.' prefix for bot commands, anything else for chat.")
 
 			for {
 				line, err := rl.Readline()
@@ -601,6 +650,182 @@ func main() {
 					// Send as command
 					client.Logger.LogSystemEvent("READLINE", fmt.Sprintf("Sending command: %s", line))
 					client.SendCommand(line)
+				} else if strings.HasPrefix(line, ".") {
+					// Handle bot commands
+					client.Logger.LogSystemEvent("READLINE", fmt.Sprintf("Processing bot command: %s", line))
+					args := strings.Split(line[1:], " ") // Remove the '.' prefix
+
+					switch args[0] {
+					case "getblock":
+						// 查詢指定座標的方塊資訊
+						if len(args) >= 4 {
+							var x, y, z int
+							if _, err := fmt.Sscanf(strings.Join(args[1:4], " "), "%d %d %d", &x, &y, &z); err != nil {
+								fmt.Println("無效的座標格式，請使用: .getblock <x> <y> <z>")
+								break
+							}
+
+							pos := cube.Pos{x, y, z}
+							blockInfo := GetBlockInfo(client, pos)
+
+							if blockInfo == nil {
+								fmt.Println("世界資料未載入")
+								break
+							}
+
+							// 構建回應訊息
+							response := fmt.Sprintf("座標 (%d, %d, %d) 的方塊:\n", x, y, z)
+							response += fmt.Sprintf("名稱: %s\n", blockInfo["name"])
+							response += fmt.Sprintf("Runtime ID: %d", blockInfo["runtime_id"])
+
+							if properties := blockInfo["properties"]; properties != nil {
+								if props, ok := properties.(map[string]any); ok && len(props) > 0 {
+									response += fmt.Sprintf("\n屬性: %v", props)
+								}
+							}
+
+							if blockInfo["has_nbt"].(bool) {
+								entityData := blockInfo["block_entity"].(map[string]any)
+								response += fmt.Sprintf("\n方塊實體: 是 (%d 個屬性)", len(entityData))
+							}
+
+							fmt.Println(response)
+						} else {
+							fmt.Println("用法: .getblock <x> <y> <z>")
+						}
+
+					case "inv":
+						// 背包相關指令
+						if len(args) > 1 {
+							switch args[1] {
+							case "status":
+								invHelper.LogInventoryStatus()
+								info := invHelper.GetInventoryInfo()
+								if info != nil {
+									fmt.Printf("背包: %d/%d 格已使用, 手持格位: %d, 盔甲: %v, 副手: %v\n",
+										info["occupied_slots"], info["total_slots"], info["held_slot"],
+										info["armour_equipped"], info["offhand_item"])
+								}
+
+							case "find":
+								if len(args) > 2 {
+									itemName := strings.Join(args[2:], " ")
+									slots := invHelper.FindItem(itemName)
+									if len(slots) > 0 {
+										fmt.Printf("找到 '%s' 在格位: %v\n", itemName, slots)
+									} else {
+										fmt.Printf("未找到包含 '%s' 的物品\n", itemName)
+									}
+								} else {
+									fmt.Println("用法: .inv find <物品名稱>")
+								}
+
+							case "count":
+								if len(args) > 2 {
+									itemName := strings.Join(args[2:], " ")
+									count := invHelper.CountItem(itemName)
+									fmt.Printf("包含 '%s' 的物品總數: %d\n", itemName, count)
+								} else {
+									fmt.Println("用法: .inv count <物品名稱>")
+								}
+
+							case "slot":
+								if len(args) > 2 {
+									slotNum := 0
+									fmt.Sscanf(args[2], "%d", &slotNum)
+									item := invHelper.GetItemInSlot(slotNum)
+									if !item.Empty() {
+										name, _ := item.Item().EncodeItem()
+										fmt.Printf("格位 %d: %s x%d\n", slotNum, name, item.Count())
+									} else {
+										fmt.Printf("格位 %d 是空的\n", slotNum)
+									}
+								} else {
+									fmt.Println("用法: .inv slot <格位編號>")
+								}
+
+							case "held":
+								heldItem, slot := invHelper.GetCurrentHeldItem()
+								if !heldItem.Empty() {
+									name, _ := heldItem.Item().EncodeItem()
+									fmt.Printf("手持物品: %s x%d (格位 %d)\n", name, heldItem.Count(), slot)
+								} else {
+									fmt.Printf("手持格位 %d 是空的\n", slot)
+								}
+
+							case "armour", "armor":
+								armourInfo := invHelper.GetArmourInfo()
+								if armourInfo != nil {
+									fmt.Printf("頭盔: %s | 胸甲: %s | 護腿: %s | 靴子: %s\n",
+										armourInfo["helmet"], armourInfo["chestplate"],
+										armourInfo["leggings"], armourInfo["boots"])
+								}
+
+							case "switch":
+								if len(args) > 2 {
+									slot := 0
+									fmt.Sscanf(args[2], "%d", &slot)
+									if invHelper.SwitchHotbarSlot(slot) {
+										fmt.Printf("已切換到快捷欄格位 %d\n", slot)
+									} else {
+										fmt.Println("無效的快捷欄格位 (0-8)")
+									}
+								} else {
+									fmt.Println("用法: .inv switch <格位 0-8>")
+								}
+
+							case "container":
+								containerInfo := invHelper.GetOpenedContainer()
+								if containerInfo != nil {
+									fmt.Printf("開啟容器: WindowID=%d, 大小=%d, 物品數=%d\n",
+										containerInfo["window_id"], containerInfo["container_size"],
+										containerInfo["item_count"])
+								} else {
+									fmt.Println("當前沒有開啟任何容器")
+								}
+
+							case "list":
+								// 使用 InventoryHelper 的統計功能
+								summary := invHelper.GetInventorySummary()
+								if len(summary) > 0 {
+									fmt.Println("背包物品清單:")
+									for name, count := range summary {
+										fmt.Printf("- %s: %d\n", name, count)
+									}
+								} else {
+									fmt.Println("背包是空的")
+								}
+
+							case "layout":
+								// 顯示背包布局（CLI表格格式）
+								layout := invHelper.PrintInventoryLayout()
+								fmt.Print(layout)
+
+							case "help":
+								helpMsg := "背包指令 (基於 ScreenManager):\n" +
+									"status - 顯示背包狀態\n" +
+									"find <物品> - 尋找物品位置\n" +
+									"count <物品> - 計算物品數量\n" +
+									"slot <編號> - 查看指定格位\n" +
+									"held - 顯示手持物品\n" +
+									"armour - 顯示盔甲狀態\n" +
+									"switch <0-8> - 切換快捷欄\n" +
+									"container - 顯示開啟的容器\n" +
+									"list - 列出所有物品統計\n" +
+									"layout - 顯示詳細背包布局"
+								fmt.Println(helpMsg)
+
+							default:
+								fmt.Println("未知指令. 使用 '.inv help' 查看幫助")
+							}
+						} else {
+							invHelper.LogInventoryStatus()
+						}
+
+					default:
+						fmt.Printf("未知的bot指令: %s\n", args[0])
+						fmt.Println("可用指令: .getblock, .inv")
+					}
 				} else {
 					// Send as chat text
 					client.Logger.LogSystemEvent("READLINE", fmt.Sprintf("Sending chat: %s", line))

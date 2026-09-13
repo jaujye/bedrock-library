@@ -28,10 +28,10 @@ max_reconnect_attempts = 5
 reconnect_delay_seconds = 30
 
 # Bot owners (can use admin commands)
-owners = ["example_owner"]
+owners = ["jaujye"]
 
 # Advertisement messages
-ads = ["Example advertisement message"]
+ads = [""]
 
 [auth]
 # Token cache file for storing authentication tokens
@@ -39,5 +39,5 @@ token_cache_file = "profile/cache.json"
 
 [server]
 # Minecraft server connection details
-address = "bedrock.mcfallout.net"
+address = "jpb.mcfallout.net"
 port = 19132
